@@ -7,30 +7,19 @@ import pandas as pd
 import numpy as np
 import time
 import warnings
-from sklearn.tree import DecisionTreeClassifier
+from sklearn.tree import DecisionTreeClassifier, _tree
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-# -------------------------
-# Paths (relative to this file)
-# -------------------------
-BASE_DIR = os.path.dirname(__file__)
-DATA_DIR = os.path.join(BASE_DIR, "data")
-ASSETS_DIR = os.path.join(BASE_DIR, "assets")
+USER_DB_FILE = r"C:\Users\v santhosh kumar\Desktop\cts\users_db.csv"
+IMG_PATH = r"C:\Users\v santhosh kumar\Desktop\cts\sg.jpg"
 
-USER_DB_FILE = os.path.join(DATA_DIR, "users_db.csv")
-IMG_PATH = os.path.join(ASSETS_DIR, "sg.jpg")
-
-# -------------------------
-# Utility functions for user DB
-# -------------------------
 def initialize_user_file():
     """Ensure users_db.csv exists with correct headers."""
-    os.makedirs(DATA_DIR, exist_ok=True)
     if not os.path.exists(USER_DB_FILE):
-        with open(USER_DB_FILE, "w", newline="", encoding="utf-8") as file:
+        with open(USER_DB_FILE, "w", newline="") as file:
             writer = csv.writer(file)
             writer.writerow(["username", "password", "phone_number", "city"])
 
@@ -38,7 +27,7 @@ def username_exists(username):
     """Check if username already exists in users_db.csv."""
     if not os.path.exists(USER_DB_FILE):
         return False
-    with open(USER_DB_FILE, "r", newline="", encoding="utf-8") as file:
+    with open(USER_DB_FILE, "r", newline="") as file:
         reader = csv.DictReader(file)
         for row in reader:
             if row["username"].strip().lower() == username.lower():
@@ -51,7 +40,7 @@ def register_user(username, password, phone_number, city):
     password = password.strip()
     phone_number = phone_number.strip()
     city = city.strip()
-    with open(USER_DB_FILE, "a", newline="", encoding="utf-8") as file:
+    with open(USER_DB_FILE, "a", newline="") as file:
         writer = csv.writer(file)
         writer.writerow([username, password, phone_number, city])
     st.success(f"Registration Successful! You are now logged in as '{username}'.")
@@ -62,7 +51,7 @@ def login_user(username, password):
     """Verify login credentials. Return True if valid, else False."""
     if not os.path.exists(USER_DB_FILE):
         return False
-    with open(USER_DB_FILE, "r", newline="", encoding="utf-8") as file:
+    with open(USER_DB_FILE, "r", newline="") as file:
         reader = csv.DictReader(file)
         for row in reader:
             stored_username = row["username"].strip().lower()
@@ -71,14 +60,12 @@ def login_user(username, password):
                 return True
     return False
 
-# -------------------------
-# UI Styling
-# -------------------------
 def set_custom_style():
     """Set animated background image with circular motion and adjust text style for readability."""
     if os.path.exists(IMG_PATH):
         with open(IMG_PATH, "rb") as img_file:
             encoded_string = base64.b64encode(img_file.read()).decode()
+        # Animate background using circular movement through keyframes
         style = f"""
             <style>
             .stApp {{
@@ -106,35 +93,27 @@ def set_custom_style():
             }}
             body, .stTextInput, .stNumberInput, .stSelectbox, .stCheckbox, .stButton, button, p {{
                 font-family: 'Yu Gothic Medium', sans-serif;
-                font-size: 18px;
+                font-size: 30px;
                 color: white;
             }}
             .stTextInput > label, .stNumberInput > label {{
-                font-size: 18px;
+                font-size: 30px;
                 color: white;
             }}
             </style>
             """
         st.markdown(style, unsafe_allow_html=True)
     else:
-        st.markdown("<style>body, p { font-size: 18px; color: white; }</style>", unsafe_allow_html=True)
+        st.markdown("<style>body, p { font-size: 30px; color: white; }</style>", unsafe_allow_html=True)
 
-# -------------------------
-# Load & Train Model
-# -------------------------
 @st.cache_data
 def load_and_train():
     """Load training data, train a Decision Tree, return model + metadata."""
-    training_file = os.path.join(DATA_DIR, "Training.csv")
-    testing_file = os.path.join(DATA_DIR, "Testing.csv")
-
-    if not os.path.exists(training_file):
-        raise FileNotFoundError(f"Training.csv not found at {training_file}")
+    training_file = r"C:\Users\v santhosh kumar\Desktop\cts\Training.csv"
+    testing_file = r"C:\Users\v santhosh kumar\Desktop\cts\Testing.csv"
 
     training = pd.read_csv(training_file)
-    # optional: check testing file presence
-    if os.path.exists(testing_file):
-        testing = pd.read_csv(testing_file)
+    testing = pd.read_csv(testing_file)
 
     cols = training.columns[:-1]
     X = training[cols]
@@ -146,17 +125,14 @@ def load_and_train():
     X_train, X_test, y_train, y_test = train_test_split(
         X, y_encoded, test_size=0.33, random_state=42
     )
-    clf = DecisionTreeClassifier(random_state=42)
+    clf = DecisionTreeClassifier()
     clf.fit(X_train, y_train)
 
     # For symptom grouping usage
-    reduced_data = training.groupby("prognosis").max()
+    reduced_data = training.groupby(training["prognosis"]).max()
 
-    return clf, le, list(cols), reduced_data
+    return clf, le, cols, reduced_data
 
-# -------------------------
-# Load dictionaries from CSVs
-# -------------------------
 @st.cache_data
 def load_dictionaries():
     """Load severity, description, and precaution data from CSV files."""
@@ -164,51 +140,36 @@ def load_dictionaries():
     description_list = {}
     precautionDictionary = {}
 
-    severity_file = os.path.join(DATA_DIR, "Symptom-severity.csv")
-    description_file = os.path.join(DATA_DIR, "symptom_Description.csv")
-    precaution_file = os.path.join(DATA_DIR, "symptom_precaution.csv")
+    severity_file = r"C:\Users\v santhosh kumar\Desktop\cts\Symptom-severity.csv"
+    description_file = r"C:\Users\v santhosh kumar\Desktop\cts\symptom_Description.csv"
+    precaution_file = r"C:\Users\v santhosh kumar\Desktop\cts\symptom_precaution.csv"
 
-    if os.path.exists(severity_file):
-        with open(severity_file, encoding="utf-8") as csv_file:
-            csv_reader = csv.reader(csv_file, delimiter=",")
-            next(csv_reader, None)  # skip header
-            for row in csv_reader:
-                if not row:
-                    continue
-                symptom = row[0].strip()
-                try:
-                    severity = int(row[1])
-                except:
-                    severity = 0
-                severityDictionary[symptom] = severity
+    with open(severity_file, encoding="utf-8") as csv_file:
+        csv_reader = csv.reader(csv_file, delimiter=",")
+        next(csv_reader, None)  # skip header
+        for row in csv_reader:
+            symptom = row[0].strip()
+            severity = int(row[1])
+            severityDictionary[symptom] = severity
 
-    if os.path.exists(description_file):
-        with open(description_file, encoding="utf-8") as csv_file:
-            csv_reader = csv.reader(csv_file, delimiter=",")
-            for row in csv_reader:
-                if len(row) >= 2:
-                    description_list[row[0].strip()] = row[1].strip()
+    with open(description_file, encoding="utf-8") as csv_file:
+        csv_reader = csv.reader(csv_file, delimiter=",")
+        for row in csv_reader:
+            if len(row) >= 2:
+                description_list[row[0]] = row[1]
 
-    if os.path.exists(precaution_file):
-        with open(precaution_file, encoding="utf-8") as csv_file:
-            csv_reader = csv.reader(csv_file, delimiter=",")
-            for row in csv_reader:
-                if len(row) >= 2:
-                    key = row[0].strip()
-                    values = [c.strip() for c in row[1:] if c.strip() != ""]
-                    precautionDictionary[key] = values
+    with open(precaution_file, encoding="utf-8") as csv_file:
+        csv_reader = csv.reader(csv_file, delimiter=",")
+        for row in csv_reader:
+            if len(row) >= 5:
+                precautionDictionary[row[0]] = [row[1], row[2], row[3], row[4]]
 
     return severityDictionary, description_list, precautionDictionary
 
-# -------------------------
-# Utilities for prediction & tree walk
-# -------------------------
 def check_pattern(dis_list, inp):
     """Utility function to match input symptom to known symptoms."""
-    inp_norm = inp.replace(" ", "_").strip()
-    if not inp_norm:
-        return 0, []
-    pattern = re.compile(re.escape(inp_norm), re.IGNORECASE)
+    inp = inp.replace(" ", "_")
+    pattern = re.compile(inp)
     pred_list = [item for item in dis_list if pattern.search(item)]
     if len(pred_list) > 0:
         return 1, pred_list
@@ -217,7 +178,7 @@ def check_pattern(dis_list, inp):
 
 def sec_predict(symptoms_exp, cols):
     """Second prediction with a new DecisionTree, to confirm or compare results."""
-    training_file = os.path.join(DATA_DIR, "Training.csv")
+    training_file = r"C:\Users\v santhosh kumar\Desktop\cts\Training.csv"
     df = pd.read_csv(training_file)
     X = df.iloc[:, :-1]
     y = df["prognosis"]
@@ -225,11 +186,10 @@ def sec_predict(symptoms_exp, cols):
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.3, random_state=20
     )
-    rf_clf = DecisionTreeClassifier(random_state=20)
+    rf_clf = DecisionTreeClassifier()
     rf_clf.fit(X_train, y_train)
 
-    # map columns to indices
-    symptoms_dict = {symptom: idx for idx, symptom in enumerate(X.columns)}
+    symptoms_dict = {symptom: index for index, symptom in enumerate(X)}
     input_vector = np.zeros(len(symptoms_dict), dtype=int)
     for item in symptoms_exp:
         if item in symptoms_dict:
@@ -237,19 +197,17 @@ def sec_predict(symptoms_exp, cols):
 
     return rf_clf.predict([input_vector])
 
-def print_disease(node_value, le):
-    """Extract disease name(s) from the tree leaf node_value (tree_.value[node])."""
-    counts = np.array(node_value).reshape(-1)
-    indices = np.where(counts > 0)[0]
-    if len(indices) == 0:
-        return []
-    labels = le.inverse_transform(indices)
-    return [x.strip() for x in labels]
+def print_disease(node, le):
+    """Extract disease name from the tree leaf node."""
+    node = node[0]
+    val = node.nonzero()
+    disease = le.inverse_transform(val[0])
+    return [x.strip() for x in list(disease)]
 
 def calc_condition(exp, days, severityDictionary):
     """Calculate severity condition based on symptom severity & duration."""
     sum_sev = sum(severityDictionary.get(item, 0) for item in exp)
-    threshold = (sum_sev * days) / (len(exp) + 1) if len(exp) > 0 else 0
+    threshold = (sum_sev * days) / (len(exp) + 1)
     if threshold > 13:
         return "You should take the consultation from a doctor."
     else:
@@ -261,114 +219,80 @@ def analyze_symptoms(clf, le, cols, reduced_data, disease_input, num_days,
     symptoms_present = []
     symptoms_exp = []
     tree_ = clf.tree_
+    feature_name = [cols[i] if i != _tree.TREE_UNDEFINED else "undefined" for i in tree_.feature]
 
-    # Build feature_name safely (handle negative feature indices for leaves)
-    feature_name = []
-    for i in tree_.feature:
-        try:
-            idx = int(i)
-        except:
-            idx = -1
-        if idx >= 0 and idx < len(cols):
-            feature_name.append(cols[idx])
-        else:
-            feature_name.append("undefined")
-
-    def collect_symptoms(node):
-        if tree_.feature[node] >= 0:
+    def collect_symptoms(node, depth=0):
+        if tree_.feature[node] != _tree.TREE_UNDEFINED:
             name = feature_name[node]
             val = 1 if name == disease_input else 0
-            # threshold can be float like 0.5 for binary features
             if val <= tree_.threshold[node]:
-                return collect_symptoms(int(tree_.children_left[node]))
+                return collect_symptoms(tree_.children_left[node], depth + 1)
             else:
                 symptoms_present.append(name)
-                return collect_symptoms(int(tree_.children_right[node]))
+                return collect_symptoms(tree_.children_right[node], depth + 1)
         else:
             present_disease = print_disease(tree_.value[node], le)
-            if len(present_disease) == 0:
-                return [], []
-            # reduced_data rows correspond to prognosis labels (index)
-            # get first disease's symptom vector safely
-            first_d = present_disease[0]
-            if first_d in reduced_data.index:
-                row_data = reduced_data.loc[first_d].values
-                # row_data is array of 0/1s for symptoms; find symptom names
-                red_cols = reduced_data.columns
-                symptoms_given = list(red_cols[np.array(row_data).nonzero()[0]])
-                return symptoms_given, present_disease
-            else:
-                return [], present_disease
+            red_cols = reduced_data.columns
+            row_data = reduced_data.loc[present_disease].values[0]
+            symptoms_given = red_cols[row_data.nonzero()]
+            return symptoms_given, present_disease
 
     symptoms_given, present_disease = collect_symptoms(0)
-
     st.markdown("<div style='text-align: center;'><p>Experiencing any of these symptoms?</p></div>", unsafe_allow_html=True)
-
-    # If no symptoms found, inform user
-    if not symptoms_given:
-        st.warning("No symptom suggestions could be extracted from the tree for this input.")
+    
     for sym in symptoms_given:
         if st.checkbox(sym):
             symptoms_exp.append(sym)
-
+    
     if st.button("Get Diagnosis"):
         with st.spinner("Analyzing your symptoms..."):
             progress_bar = st.progress(0)
             for percent_complete in range(1, 101):
-                time.sleep(0.01)
+                time.sleep(0.03)
                 progress_bar.progress(percent_complete)
             second_prediction = sec_predict(symptoms_exp, cols)
             condition_text = calc_condition(symptoms_exp, num_days, severityDictionary)
-            time.sleep(0.2)
+            time.sleep(0.5)
         st.info(condition_text)
-
-        # present_disease might be a list; second_prediction is an array
-        pred1 = present_disease[0] if len(present_disease) > 0 else None
-        pred2 = second_prediction[0] if len(second_prediction) > 0 else None
-
-        if pred1 and pred2 and pred1 == pred2:
-            st.success(f"You may have **{pred1}**")
-            if pred1 in description_list:
-                st.write(description_list[pred1])
+        if present_disease[0] == second_prediction[0]:
+            st.success(f"You may have **{present_disease[0]}**")
+            if present_disease[0] in description_list:
+                st.write(description_list[present_disease[0]])
         else:
-            if pred1:
-                st.warning(f"You may have **{pred1}**")
-                if pred1 in description_list:
-                    st.write(description_list[pred1])
-            if pred2:
-                st.warning(f"Or you may have **{pred2}**")
-                if pred2 in description_list:
-                    st.write(description_list[pred2])
-
+            st.warning(f"You may have **{present_disease[0]}** or **{second_prediction[0]}**")
+            if present_disease[0] in description_list:
+                st.write(description_list[present_disease[0]])
+            st.write("---")
+            if second_prediction[0] in description_list:
+                st.write(description_list[second_prediction[0]])
         st.markdown("<p style='color: white; font-weight: bold;'>Take the following measures:</p>", unsafe_allow_html=True)
-        if pred1 and pred1 in precautionDictionary:
-            for measure in precautionDictionary[pred1]:
+        if present_disease[0] in precautionDictionary:
+            for measure in precautionDictionary[present_disease[0]]:
                 st.markdown(f"<p style='color: white;'>{measure}</p>", unsafe_allow_html=True)
         else:
             st.markdown("<p style='color: white;'>No specific measures found.</p>", unsafe_allow_html=True)
 
-# -------------------------
-# Animations & UI pages
-# -------------------------
 def animate_welcome():
+    """Animate the welcome message letter by letter."""
     welcome_message = "Welcome to the Health Diagnosis System!"
     animated_text = st.empty()
     display_text = ""
     for char in welcome_message:
         display_text += char
         animated_text.markdown(f"<h1 style='text-align: center;'>{display_text}</h1>", unsafe_allow_html=True)
-        time.sleep(0.03)
-    time.sleep(0.2)
+        time.sleep(0.1)
+    time.sleep(0.5)
 
 def animate_login():
+    """Animate the login message letter by letter."""
     login_message = "Please Login to Your Account"
     animated_text = st.empty()
     display_text = ""
     for char in login_message:
         display_text += char
         animated_text.markdown(f"<h1 style='text-align: center;'>{display_text}</h1>", unsafe_allow_html=True)
-        time.sleep(0.03)
-    time.sleep(0.2)
+        time.sleep(0.1)
+    time.sleep(0.5)
 
 def home():
     st.markdown(
@@ -381,6 +305,14 @@ def home():
         """,
         unsafe_allow_html=True
     )
+    st.markdown(
+        """<style>
+        .stButton button {
+            min-width: 100px;
+        }
+        </style>""",
+        unsafe_allow_html=True
+    )
     col1, col2, col3, col4, col5 = st.columns([2, 2, 0.2, 2, 2])
     with col2:
         if st.button("Register"):
@@ -389,20 +321,15 @@ def home():
         if st.button("Login"):
             st.session_state["view"] = "login"
 
-# -------------------------
-# Main app flow
-# -------------------------
 def main():
     set_custom_style()
     initialize_user_file()
-
     if "logged_in" not in st.session_state:
         st.session_state["logged_in"] = False
     if "username" not in st.session_state:
         st.session_state["username"] = ""
     if "view" not in st.session_state:
         st.session_state["view"] = "home"
-
     if st.session_state["view"] == "home":
         home()
     elif st.session_state["view"] == "register":
@@ -445,11 +372,7 @@ def main():
         )
         symptom_input = st.text_input("Enter a symptom you are experiencing (e.g. headache)")
         if symptom_input:
-            try:
-                clf, le, cols, reduced_data = load_and_train()
-            except FileNotFoundError as e:
-                st.error(str(e))
-                return
+            clf, le, cols, reduced_data = load_and_train()
             severityDictionary, description_list, precautionDictionary = load_dictionaries()
             conf, cnf_dis = check_pattern(cols, symptom_input)
             if conf == 1:
