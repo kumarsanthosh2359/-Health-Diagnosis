@@ -67,24 +67,37 @@ def login_user(username, password):
 
 
 # ======================================================
-# BACKGROUND IMAGE
+# ANIMATED BACKGROUND
 # ======================================================
 def set_custom_style():
     if os.path.exists(IMG_PATH):
         with open(IMG_PATH, "rb") as img_file:
             encoded_string = base64.b64encode(img_file.read()).decode()
 
-        style = f"""
+        st.markdown(
+            f"""
             <style>
             .stApp {{
                 background-image: url("data:image/jpg;base64,{encoded_string}");
                 background-size: cover;
                 background-repeat: no-repeat;
                 background-attachment: fixed;
+
+                /* 🔥 ANIMATION */
+                animation: moveBg 25s ease-in-out infinite;
+            }}
+
+            @keyframes moveBg {{
+                0%   {{ background-position: 50% 0%; }}
+                25%  {{ background-position: 100% 50%; }}
+                50%  {{ background-position: 50% 100%; }}
+                75%  {{ background-position: 0% 50%; }}
+                100% {{ background-position: 50% 0%; }}
             }}
             </style>
-        """
-        st.markdown(style, unsafe_allow_html=True)
+            """,
+            unsafe_allow_html=True
+        )
 
 
 # ======================================================
@@ -127,20 +140,17 @@ def load_dictionaries():
     description_file = os.path.join(DATA_DIR, "symptom_Description.csv")
     precaution_file = os.path.join(DATA_DIR, "symptom_precaution.csv")
 
-    # Severity
     with open(severity_file, encoding="utf-8") as file:
         reader = csv.reader(file)
         next(reader)
         for row in reader:
             severityDictionary[row[0]] = int(row[1])
 
-    # Description
     with open(description_file, encoding="utf-8") as file:
         reader = csv.reader(file)
         for row in reader:
             description_list[row[0]] = row[1]
 
-    # Precautions
     with open(precaution_file, encoding="utf-8") as file:
         reader = csv.reader(file)
         for row in reader:
@@ -182,7 +192,7 @@ def sec_predict(symptoms_exp, cols):
 def calc_condition(exp, days, severityDictionary):
     total = sum(severityDictionary.get(i, 0) for i in exp)
     score = (total * days) / (len(exp) + 1)
-    return "You should see a doctor." if score > 13 else "Take precautions, but it's not severe."
+    return "You should see a doctor." if score > 13 else "Take precautions."
 
 
 # ======================================================
@@ -221,7 +231,6 @@ def analyze_symptoms(clf, le, cols, reduced_data, disease_input, days, sev, desc
             symptoms_exp.append(sym)
 
     if st.button("Diagnose"):
-        second = sec_predict(symptoms_exp, cols)
         statement = calc_condition(symptoms_exp, days, sev)
 
         st.info(statement)
