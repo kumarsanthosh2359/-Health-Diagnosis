@@ -1,5 +1,4 @@
 import streamlit as st
-import re
 import os
 import csv
 import base64
@@ -13,7 +12,7 @@ from sklearn.preprocessing import LabelEncoder
 warnings.filterwarnings("ignore")
 
 # ===============================
-# PATH SETUP (GLOBAL SAFE)
+# PATH SETUP
 # ===============================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "data")
@@ -22,7 +21,7 @@ IMG_PATH = os.path.join(BASE_DIR, "sg.jpg")
 USER_DB_FILE = os.path.join(DATA_DIR, "users_db.csv")
 
 # ===============================
-# CREATE DATA FOLDER + USER FILE
+# INIT FILES
 # ===============================
 def initialize_user_file():
     os.makedirs(DATA_DIR, exist_ok=True)
@@ -34,7 +33,7 @@ def initialize_user_file():
 
 
 # ===============================
-# BACKGROUND IMAGE
+# BACKGROUND
 # ===============================
 def set_background():
     if os.path.exists(IMG_PATH):
@@ -51,12 +50,10 @@ def set_background():
         }}
         </style>
         """, unsafe_allow_html=True)
-    else:
-        st.warning("Background image not found")
 
 
 # ===============================
-# USER AUTH
+# USER SYSTEM
 # ===============================
 def username_exists(username):
     if not os.path.exists(USER_DB_FILE):
@@ -64,10 +61,7 @@ def username_exists(username):
 
     with open(USER_DB_FILE, "r") as f:
         reader = csv.DictReader(f)
-        for row in reader:
-            if row["username"] == username:
-                return True
-    return False
+        return any(row["username"] == username for row in reader)
 
 
 def register_user(username, password, phone, city):
@@ -86,10 +80,7 @@ def login_user(username, password):
 
     with open(USER_DB_FILE, "r") as f:
         reader = csv.DictReader(f)
-        for row in reader:
-            if row["username"] == username and row["password"] == password:
-                return True
-    return False
+        return any(row["username"] == username and row["password"] == password for row in reader)
 
 
 # ===============================
@@ -224,18 +215,32 @@ def main():
             matches = check_pattern(cols, symptom)
 
             if matches:
-                selected = st.multiselect("Select symptoms", matches)
+                st.subheader("Select symptoms:")
+
+                selected = []
+
+                # CHECKBOX UI (3 columns)
+                col1, col2, col3 = st.columns(3)
+                col_list = [col1, col2, col3]
+
+                for i, sym in enumerate(matches):
+                    if col_list[i % 3].checkbox(sym):
+                        selected.append(sym)
+
                 days = st.number_input("Days", 1)
 
                 if st.button("Diagnose"):
-                    input_vector = np.isin(cols, selected).astype(int)
-                    result = model.predict([input_vector])
-                    disease = le.inverse_transform(result)[0]
+                    if not selected:
+                        st.warning("Select at least one symptom")
+                    else:
+                        input_vector = np.isin(cols, selected).astype(int)
+                        result = model.predict([input_vector])
+                        disease = le.inverse_transform(result)[0]
 
-                    st.success(f"Disease: {disease}")
-                    st.info(calc_condition(selected, days, sev))
-                    st.write(desc.get(disease, "No description"))
-                    st.write(prec.get(disease, []))
+                        st.success(f"Disease: {disease}")
+                        st.info(calc_condition(selected, days, sev))
+                        st.write(desc.get(disease, "No description"))
+                        st.write(prec.get(disease, []))
             else:
                 st.error("Symptom not found")
 
