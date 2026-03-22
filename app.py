@@ -15,10 +15,12 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 BASE_DIR = os.path.dirname(__file__)
 DATA_DIR = os.path.join(BASE_DIR, "data")
-ASSETS_DIR = os.path.join(BASE_DIR, "assets")
+# Remove the assets directory since sg.jpg is in the main directory
+# ASSETS_DIR = os.path.join(BASE_DIR, "assets")
 
 USER_DB_FILE = os.path.join(DATA_DIR, "users_db.csv")
-IMG_PATH = os.path.join(ASSETS_DIR, "sg.jpg")
+# Point directly to sg.jpg in the main directory
+IMG_PATH = os.path.join(BASE_DIR, "sg.jpg")  # Changed from ASSETS_DIR to BASE_DIR
 
 def initialize_user_file():
     os.makedirs(DATA_DIR, exist_ok=True)
@@ -60,26 +62,42 @@ def login_user(username, password):
     return False
 
 def set_custom_style():
+    # Check if the image exists at the correct path
     if os.path.exists(IMG_PATH):
-        with open(IMG_PATH, "rb") as img_file:
-            encoded_string = base64.b64encode(img_file.read()).decode()
+        try:
+            with open(IMG_PATH, "rb") as img_file:
+                encoded_string = base64.b64encode(img_file.read()).decode()
 
-        style = f"""
-            <style>
-            .stApp {{
-                background-image: url("data:image/jpg;base64,{encoded_string}");
-                background-size: cover;
-                background-repeat: no-repeat;
-                background-attachment: fixed;
-            }}
-            </style>
-        """
-        st.markdown(style, unsafe_allow_html=True)
+            style = f"""
+                <style>
+                .stApp {{
+                    background-image: url("data:image/jpg;base64,{encoded_string}");
+                    background-size: cover;
+                    background-repeat: no-repeat;
+                    background-attachment: fixed;
+                }}
+                /* Make text readable on background */
+                .stApp {{
+                    background-color: rgba(255, 255, 255, 0.9);
+                    background-blend-mode: overlay;
+                }}
+                </style>
+            """
+            st.markdown(style, unsafe_allow_html=True)
+        except Exception as e:
+            st.warning(f"Could not load background image: {e}")
+    else:
+        st.warning(f"Background image not found at: {IMG_PATH}")
 
 @st.cache_data
 def load_and_train():
     training_file = os.path.join(DATA_DIR, "Training.csv")
     testing_file = os.path.join(DATA_DIR, "Testing.csv")
+
+    # Check if training file exists
+    if not os.path.exists(training_file):
+        st.error(f"Training file not found at: {training_file}")
+        return None, None, None, None
 
     training = pd.read_csv(training_file)
 
@@ -98,6 +116,7 @@ def load_and_train():
     reduced_data = training.groupby("prognosis").max()
 
     return clf, le, cols, reduced_data
+
 @st.cache_data
 def load_dictionaries():
     severityDictionary = {}
@@ -108,24 +127,31 @@ def load_dictionaries():
     description_file = os.path.join(DATA_DIR, "symptom_Description.csv")
     precaution_file = os.path.join(DATA_DIR, "symptom_precaution.csv")
 
-  
-    with open(severity_file, encoding="utf-8") as file:
-        reader = csv.reader(file)
-        next(reader)
-        for row in reader:
-            severityDictionary[row[0]] = int(row[1])
+    # Check if files exist
+    if os.path.exists(severity_file):
+        with open(severity_file, encoding="utf-8") as file:
+            reader = csv.reader(file)
+            next(reader)
+            for row in reader:
+                severityDictionary[row[0]] = int(row[1])
+    else:
+        st.warning(f"Severity file not found at: {severity_file}")
 
-   
-    with open(description_file, encoding="utf-8") as file:
-        reader = csv.reader(file)
-        for row in reader:
-            description_list[row[0]] = row[1]
+    if os.path.exists(description_file):
+        with open(description_file, encoding="utf-8") as file:
+            reader = csv.reader(file)
+            for row in reader:
+                description_list[row[0]] = row[1]
+    else:
+        st.warning(f"Description file not found at: {description_file}")
 
-  
-    with open(precaution_file, encoding="utf-8") as file:
-        reader = csv.reader(file)
-        for row in reader:
-            precautionDictionary[row[0]] = row[1:]
+    if os.path.exists(precaution_file):
+        with open(precaution_file, encoding="utf-8") as file:
+            reader = csv.reader(file)
+            for row in reader:
+                precautionDictionary[row[0]] = row[1:]
+    else:
+        st.warning(f"Precaution file not found at: {precaution_file}")
 
     return severityDictionary, description_list, precautionDictionary
 
@@ -138,7 +164,12 @@ def check_pattern(dis_list, inp):
 
 
 def sec_predict(symptoms_exp, cols):
-    df = pd.read_csv(os.path.join(DATA_DIR, "Training.csv"))
+    training_file = os.path.join(DATA_DIR, "Training.csv")
+    
+    if not os.path.exists(training_file):
+        return ["No training data available"]
+        
+    df = pd.read_csv(training_file)
     X = df.iloc[:, :-1]
     y = df["prognosis"]
 
@@ -159,11 +190,14 @@ def sec_predict(symptoms_exp, cols):
 
 def calc_condition(exp, days, severityDictionary):
     total = sum(severityDictionary.get(i, 0) for i in exp)
-    score = (total * days) / (len(exp) + 1)
+    score = (total * days) / (len(exp) + 1) if len(exp) > 0 else 0
     return "You should see a doctor." if score > 13 else "Take precautions, but it's not severe."
 
 
 def analyze_symptoms(clf, le, cols, reduced_data, disease_input, days, sev, desc, prec):
+    if clf is None or le is None or cols is None or reduced_data is None:
+        st.error("Model not loaded properly. Please check your data files.")
+        return
 
     tree_ = clf.tree_
     feature_name = [cols[i] if i >= 0 else "undefined" for i in tree_.feature]
@@ -264,15 +298,18 @@ def main():
             clf, le, cols, reduced_data = load_and_train()
             sev, desc, prec = load_dictionaries()
 
-            conf, matches = check_pattern(cols, symptom_input)
+            if clf is not None:
+                conf, matches = check_pattern(cols, symptom_input)
 
-            if conf:
-                disease_input = matches[0]
-                days = st.number_input("How many days?", min_value=1, step=1)
+                if conf:
+                    disease_input = matches[0]
+                    days = st.number_input("How many days?", min_value=1, step=1)
 
-                analyze_symptoms(clf, le, cols, reduced_data, disease_input, days, sev, desc, prec)
+                    analyze_symptoms(clf, le, cols, reduced_data, disease_input, days, sev, desc, prec)
+                else:
+                    st.error("Symptom not found.")
             else:
-                st.error("Symptom not found.")
+                st.error("Model failed to load. Please check your data files.")
 
         if st.button("Logout"):
             st.session_state["view"] = "home"
@@ -280,4 +317,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
