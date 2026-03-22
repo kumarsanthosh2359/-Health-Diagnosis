@@ -5,20 +5,26 @@ import csv
 import base64
 import pandas as pd
 import numpy as np
-import time
 import warnings
+
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-BASE_DIR = os.path.dirname(__file__)
-DATA_DIR = os.path.join(BASE_DIR, "data")
-ASSETS_DIR = os.path.join(BASE_DIR, "assets")
+# ────────────────────────────────────────────────
+# Paths
+# ────────────────────────────────────────────────
+BASE_DIR    = os.path.dirname(__file__)
+DATA_DIR    = os.path.join(BASE_DIR, "data")
+ASSETS_DIR  = os.path.join(BASE_DIR, "assets")
 
 USER_DB_FILE = os.path.join(DATA_DIR, "users_db.csv")
-IMG_PATH = os.path.join(ASSETS_DIR, "pl.jpg")
+
+# Possible background images (add more names if needed)
+POSSIBLE_BG_IMAGES = ["sg.jpg", "o.jpg", "pl.jpg"]
+
 
 def initialize_user_file():
     os.makedirs(DATA_DIR, exist_ok=True)
@@ -43,15 +49,15 @@ def register_user(username, password, phone_number, city):
     with open(USER_DB_FILE, "a", newline="") as file:
         writer = csv.writer(file)
         writer.writerow([username, password, phone_number, city])
-    st.success(f"Registration Successful! Welcome '{username}'")
+    st.success(f"Registration Successful! Welcome **{username}**")
     st.session_state["logged_in"] = True
     st.session_state["username"] = username
+    st.session_state["view"] = "main"
 
 
 def login_user(username, password):
     if not os.path.exists(USER_DB_FILE):
         return False
-
     with open(USER_DB_FILE, "r", newline="") as file:
         reader = csv.DictReader(file)
         for row in reader:
@@ -59,30 +65,77 @@ def login_user(username, password):
                 return True
     return False
 
-def set_custom_style():
-    if os.path.exists(IMG_PATH):
-        with open(IMG_PATH, "rb") as img_file:
-            encoded_string = base64.b64encode(img_file.read()).decode()
 
-        style = f"""
+def set_custom_style():
+    """Improved background with overlay for readability"""
+    selected_img_path = None
+
+    # Try to find first existing image
+    for fname in POSSIBLE_BG_IMAGES:
+        path = os.path.join(ASSETS_DIR, fname)
+        if os.path.isfile(path):
+            selected_img_path = path
+            break
+
+    if selected_img_path:
+        try:
+            with open(selected_img_path, "rb") as f:
+                encoded = base64.b64encode(f.read()).decode("utf-8")
+
+            css = f"""
             <style>
-            .stApp {{
-                background-image: url("data:image/jpg;base64,{encoded_string}");
-                background-size: cover;
-                background-repeat: no-repeat;
-                background-attachment: fixed;
-            }}
+                [data-testid="stAppViewContainer"] {{
+                    background-image: url("data:image/jpeg;base64,{encoded}");
+                    background-size: cover;
+                    background-position: center;
+                    background-repeat: no-repeat;
+                    background-attachment: fixed;
+                }}
+
+                /* Dark overlay ─ improves contrast a lot */
+                [data-testid="stAppViewContainer"]::before {{
+                    content: "";
+                    position: absolute;
+                    inset: 0;
+                    background: rgba(0, 0, 0, 0.48);
+                    z-index: -1;
+                }}
+
+                /* Force light text + shadow for better visibility */
+                .stApp h1, .stApp h2, .stApp h3,
+                .stApp p, .stApp div, .stApp span,
+                .stApp .stMarkdown, label, .st-emotion-cache {{
+                    color: #f8fafc !important;
+                    text-shadow: 0 1px 3px rgba(0,0,0,0.9);
+                }}
+
+                /* Slightly transparent header */
+                header {{
+                    background: rgba(15, 23, 42, 0.7) !important;
+                    backdrop-filter: blur(4px);
+                }}
             </style>
-        """
-        st.markdown(style, unsafe_allow_html=True)
+            """
+            st.markdown(css, unsafe_allow_html=True)
+
+        except Exception as e:
+            st.warning(f"Could not load background image → {e}")
+
+    else:
+        # Nice dark gradient fallback
+        st.markdown("""
+        <style>
+            [data-testid="stAppViewContainer"] {
+                background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%) !important;
+            }
+        </style>
+        """, unsafe_allow_html=True)
+
 
 @st.cache_data
 def load_and_train():
     training_file = os.path.join(DATA_DIR, "Training.csv")
-    testing_file = os.path.join(DATA_DIR, "Testing.csv")
-
     training = pd.read_csv(training_file)
-
     cols = training.columns[:-1]
     X = training[cols]
     y = training["prognosis"]
@@ -90,125 +143,132 @@ def load_and_train():
     le = LabelEncoder()
     y_encoded = le.fit_transform(y)
 
-    X_train, X_test, y_train, y_test = train_test_split(X, y_encoded, test_size=0.3, random_state=42)
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y_encoded, test_size=0.3, random_state=42
+    )
 
     clf = DecisionTreeClassifier()
     clf.fit(X_train, y_train)
 
     reduced_data = training.groupby("prognosis").max()
-
     return clf, le, cols, reduced_data
+
+
 @st.cache_data
 def load_dictionaries():
-    severityDictionary = {}
-    description_list = {}
-    precautionDictionary = {}
+    severity_dict = {}
+    description_dict = {}
+    precaution_dict = {}
 
-    severity_file = os.path.join(DATA_DIR, "Symptom-severity.csv")
-    description_file = os.path.join(DATA_DIR, "symptom_Description.csv")
-    precaution_file = os.path.join(DATA_DIR, "symptom_precaution.csv")
-
-  
-    with open(severity_file, encoding="utf-8") as file:
-        reader = csv.reader(file)
+    # Severity
+    with open(os.path.join(DATA_DIR, "Symptom-severity.csv"), encoding="utf-8") as f:
+        reader = csv.reader(f)
         next(reader)
         for row in reader:
-            severityDictionary[row[0]] = int(row[1])
+            if len(row) >= 2:
+                severity_dict[row[0]] = int(row[1])
 
-   
-    with open(description_file, encoding="utf-8") as file:
-        reader = csv.reader(file)
+    # Description
+    with open(os.path.join(DATA_DIR, "symptom_Description.csv"), encoding="utf-8") as f:
+        reader = csv.reader(f)
+        next(reader)  # skip header if exists
         for row in reader:
-            description_list[row[0]] = row[1]
+            if len(row) >= 2:
+                description_dict[row[0]] = row[1]
 
-  
-    with open(precaution_file, encoding="utf-8") as file:
-        reader = csv.reader(file)
+    # Precautions
+    with open(os.path.join(DATA_DIR, "symptom_precaution.csv"), encoding="utf-8") as f:
+        reader = csv.reader(f)
+        next(reader)
         for row in reader:
-            precautionDictionary[row[0]] = row[1:]
+            if len(row) >= 5:
+                precaution_dict[row[0]] = [p for p in row[1:] if p.strip()]
 
-    return severityDictionary, description_list, precautionDictionary
-
-
-def check_pattern(dis_list, inp):
-    inp = inp.replace(" ", "_")
-    pattern = re.compile(inp)
-    pred_list = [item for item in dis_list if pattern.search(item)]
-    return (1, pred_list) if pred_list else (0, [])
+    return severity_dict, description_dict, precaution_dict
 
 
-def sec_predict(symptoms_exp, cols):
+def check_pattern(symptom_list, user_input):
+    cleaned = user_input.replace(" ", "_").strip()
+    pattern = re.compile(re.escape(cleaned), re.IGNORECASE)
+    matches = [s for s in symptom_list if pattern.search(s)]
+    return (1, matches) if matches else (0, [])
+
+
+def sec_predict(user_symptoms, all_columns):
     df = pd.read_csv(os.path.join(DATA_DIR, "Training.csv"))
     X = df.iloc[:, :-1]
     y = df["prognosis"]
 
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=20)
-
+    X_train, _, y_train, _ = train_test_split(X, y, test_size=0.3, random_state=20)
     model = DecisionTreeClassifier()
     model.fit(X_train, y_train)
 
-    symptoms_dict = {symptom: idx for idx, symptom in enumerate(X.columns)}
-    input_vector = np.zeros(len(symptoms_dict))
+    symptoms_dict = {sym: idx for idx, sym in enumerate(X.columns)}
+    vec = np.zeros(len(symptoms_dict))
 
-    for item in symptoms_exp:
-        if item in symptoms_dict:
-            input_vector[symptoms_dict[item]] = 1
+    for sym in user_symptoms:
+        if sym in symptoms_dict:
+            vec[symptoms_dict[sym]] = 1
 
-    return model.predict([input_vector])
-
-
-def calc_condition(exp, days, severityDictionary):
-    total = sum(severityDictionary.get(i, 0) for i in exp)
-    score = (total * days) / (len(exp) + 1)
-    return "You should see a doctor." if score > 13 else "Take precautions, but it's not severe."
+    return model.predict([vec])[0]
 
 
-def analyze_symptoms(clf, le, cols, reduced_data, disease_input, days, sev, desc, prec):
+def calc_condition(symptoms, days, severity_dict):
+    if not symptoms:
+        return "Please select some symptoms."
+    total_severity = sum(severity_dict.get(s, 0) for s in symptoms)
+    score = (total_severity * days) / (len(symptoms) + 1)
+    if score > 13:
+        return "You should see a doctor as soon as possible."
+    return "Take precautions — condition does not appear severe."
 
+
+def analyze_symptoms(clf, le, cols, reduced_data, initial_symptom, days, sev, desc, prec):
     tree_ = clf.tree_
     feature_name = [cols[i] if i >= 0 else "undefined" for i in tree_.feature]
-
-    symptoms_taken = []
-    symptoms_exp = []
 
     def walk_tree(node):
         if tree_.feature[node] >= 0:
             name = feature_name[node]
-            val = 1 if name == disease_input else 0
+            val = 1 if name == initial_symptom else 0
             if val <= tree_.threshold[node]:
                 return walk_tree(tree_.children_left[node])
             else:
-                symptoms_taken.append(name)
                 return walk_tree(tree_.children_right[node])
         else:
             node_values = tree_.value[node][0]
-            final_idx = np.argmax(node_values)
-            final_disease = le.inverse_transform([final_idx])[0]
-            row = reduced_data.loc[final_disease]
-            symptoms_list = list(row[row == 1].index)
-            return symptoms_list, [final_disease]
+            idx = np.argmax(node_values)
+            disease = le.inverse_transform([idx])[0]
+            row = reduced_data.loc[disease]
+            symptoms_present = list(row[row == 1].index)
+            return symptoms_present, [disease]
 
-    symptoms_list, predicted = walk_tree(0)
+    possible_symptoms, predicted_diseases = walk_tree(0)
 
-    st.subheader("Select your symptoms:")
-    for sym in symptoms_list:
-        if st.checkbox(sym):
-            symptoms_exp.append(sym)
+    st.subheader("Select the symptoms you are experiencing:")
+    selected_symptoms = []
+    for sym in possible_symptoms:
+        if st.checkbox(sym.replace("_", " ").title()):
+            selected_symptoms.append(sym)
 
-    if st.button("Diagnose"):
-        second = sec_predict(symptoms_exp, cols)
-        statement = calc_condition(symptoms_exp, days, sev)
+    if st.button("Get Diagnosis", type="primary"):
+        if not selected_symptoms:
+            st.warning("Please select at least one symptom.")
+            return
 
-        st.info(statement)
+        most_likely = sec_predict(selected_symptoms, cols)
+        advice = calc_condition(selected_symptoms, days, sev)
 
-        st.success(f"Possible Disease: **{predicted[0]}**")
+        st.info(advice)
+        st.success(f"**Possible condition:** {most_likely}")
 
-        st.write("### Description:")
-        st.write(desc.get(predicted[0], "No description available."))
+        st.markdown("**Description**")
+        st.write(desc.get(most_likely, "No description available."))
 
-        st.write("### Precautions:")
-        for p in prec.get(predicted[0], []):
-            st.write("-", p)
+        st.markdown("**Recommended Precautions**")
+        for p in prec.get(most_likely, ["No specific precautions found."]):
+            if p.strip():
+                st.write(f"• {p}")
 
 
 def main():
@@ -220,31 +280,30 @@ def main():
 
     if st.session_state["view"] == "home":
         st.title("Health Diagnosis System")
-
+        st.markdown("Please login or register to continue.")
         col1, col2 = st.columns(2)
-        if col1.button("Register"):
+        if col1.button("Register", use_container_width=True):
             st.session_state["view"] = "register"
-        if col2.button("Login"):
+        if col2.button("Login", use_container_width=True):
             st.session_state["view"] = "login"
 
     elif st.session_state["view"] == "register":
-        st.header("Register")
-
+        st.header("Create Account")
         username = st.text_input("Username")
         password = st.text_input("Password", type="password")
         phone = st.text_input("Phone Number")
         city = st.text_input("City")
 
-        if st.button("Submit"):
-            if username_exists(username):
-                st.error("Username already exists")
+        if st.button("Register"):
+            if not username.strip():
+                st.error("Username is required.")
+            elif username_exists(username):
+                st.error("Username already taken.")
             else:
                 register_user(username, password, phone, city)
-                st.session_state["view"] = "main"
 
     elif st.session_state["view"] == "login":
-        st.header("Login")
-
+        st.header("Sign In")
         username = st.text_input("Username")
         password = st.text_input("Password", type="password")
 
@@ -253,31 +312,32 @@ def main():
                 st.session_state["username"] = username
                 st.session_state["view"] = "main"
             else:
-                st.error("Invalid credentials")
+                st.error("Invalid username or password.")
 
     elif st.session_state["view"] == "main":
-        st.header(f"Welcome {st.session_state['username']}")
+        st.header(f"Welcome, {st.session_state['username']}")
 
-        symptom_input = st.text_input("Enter a symptom:")
+        symptom_input = st.text_input("Type the main symptom you're experiencing:", key="symptom_input")
 
         if symptom_input:
             clf, le, cols, reduced_data = load_and_train()
             sev, desc, prec = load_dictionaries()
 
-            conf, matches = check_pattern(cols, symptom_input)
+            found, matches = check_pattern(cols, symptom_input)
 
-            if conf:
-                disease_input = matches[0]
-                days = st.number_input("How many days?", min_value=1, step=1)
-
-                analyze_symptoms(clf, le, cols, reduced_data, disease_input, days, sev, desc, prec)
+            if found:
+                main_symptom = matches[0]   # take best match
+                days = st.number_input("How many days have you had this symptom?", min_value=1, step=1)
+                analyze_symptoms(clf, le, cols, reduced_data, main_symptom, days, sev, desc, prec)
             else:
-                st.error("Symptom not found.")
+                st.error("Sorry, we couldn't recognize that symptom. Try another spelling or a related term.")
 
         if st.button("Logout"):
+            for k in list(st.session_state.keys()):
+                del st.session_state[k]
             st.session_state["view"] = "home"
+            st.rerun()
 
 
 if __name__ == "__main__":
     main()
-
