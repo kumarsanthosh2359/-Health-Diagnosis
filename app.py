@@ -279,7 +279,7 @@ def main():
         st.session_state["view"] = "home"
 
     if st.session_state["view"] == "home":
-        st.title("Health Diagnosis System")
+        st.title("Disease Prediction System")
         st.markdown("Please login or register to continue.")
         col1, col2 = st.columns(2)
         if col1.button("Register", use_container_width=True):
