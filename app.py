@@ -1,4 +1,3 @@
-
 import streamlit as st
 import re
 import os
@@ -19,7 +18,7 @@ warnings.filterwarnings("ignore")
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "data")
 
-IMG_PATH = os.path.join(BASE_DIR, "sg.jpg")  # image in root
+IMG_PATH = os.path.join(BASE_DIR, "sg.jpg")
 USER_DB_FILE = os.path.join(DATA_DIR, "users_db.csv")
 
 # ===============================
@@ -160,7 +159,7 @@ def check_pattern(cols, inp):
 
 def calc_condition(exp, days, sev):
     score = sum(sev.get(i, 0) for i in exp) * days
-    return "See a doctor" if score > 10 else "Take care"
+    return "You should see a doctor." if score > 10 else "Take precautions."
 
 
 # ===============================
@@ -221,7 +220,7 @@ def main():
 
         symptom = st.text_input("Enter symptom")
 
-        if symptom:
+        if symptom and model is not None:
             matches = check_pattern(cols, symptom)
 
             if matches:
@@ -229,7 +228,8 @@ def main():
                 days = st.number_input("Days", 1)
 
                 if st.button("Diagnose"):
-                    result = model.predict([np.isin(cols, selected).astype(int)])
+                    input_vector = np.isin(cols, selected).astype(int)
+                    result = model.predict([input_vector])
                     disease = le.inverse_transform(result)[0]
 
                     st.success(f"Disease: {disease}")
@@ -245,4 +245,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-```
